@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_text_styles.dart';
+import '../../theme/app_spacing.dart';
+
 import 'signup_screen.dart';
 import 'login_screen.dart';
 
@@ -7,133 +11,118 @@ class AuthEntryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primaryBlue = Color(0xFF4F6EF7);
-    const textPrimary = Color(0xFF171717);
-    const textSecondary = Color(0xFF7A7A7A);
-    const cardBorder = Color(0xFFE9E9EE);
-
     return Scaffold(
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+              padding: AppSpacing.screenPadding,
               child: Column(
                 children: [
                   const Spacer(),
 
+                  // 🔵 Logo / Icon
                   Container(
-                    width: 58,
-                    height: 58,
+                    width: 64,
+                    height: 64,
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(29),
-                      border: Border.all(color: cardBorder),
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.border),
                       boxShadow: const [
                         BoxShadow(
-                          color: Color(0x14000000),
-                          blurRadius: 18,
-                          offset: Offset(0, 8),
+                          color: Color(0x0F000000),
+                          blurRadius: 20,
+                          offset: Offset(0, 10),
                         ),
                       ],
                     ),
                     child: const Icon(
                       Icons.currency_exchange_rounded,
-                      size: 28,
-                      color: Color(0xFF272727),
+                      size: 30,
+                      color: AppColors.textPrimary,
                     ),
                   ),
 
-                  const SizedBox(height: 28),
+                  const SizedBox(height: AppSpacing.xl),
 
+                  // 🧠 Title
                   const Text(
                     'Settle up, simply.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 34,
-                      height: 1.1,
-                      fontWeight: FontWeight.w700,
-                      color: textPrimary,
-                      letterSpacing: -0.7,
-                    ),
+                    style: AppTextStyles.titleLarge,
                   ),
 
-                  const SizedBox(height: 14),
+                  const SizedBox(height: AppSpacing.sm),
 
+                  // ✍️ Subtitle
                   const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    padding: EdgeInsets.symmetric(horizontal: AppSpacing.sm),
                     child: Text(
                       'Track and manage shared expenses\nwithout the awkwardness.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 15,
-                        height: 1.45,
-                        fontWeight: FontWeight.w400,
-                        color: textSecondary,
-                      ),
+                      style: AppTextStyles.bodySecondary,
                     ),
                   ),
 
-                  const SizedBox(height: 42),
+                  const SizedBox(height: AppSpacing.xl),
 
+                  // 🟦 Primary Button
                   SizedBox(
                     width: double.infinity,
-                    height: 58,
+                    height: 56,
                     child: ElevatedButton(
                       onPressed: () {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const SignupScreen()),
-  );
-},
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SignupScreen(),
+                          ),
+                        );
+                      },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryBlue,
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.white,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: AppSpacing.cardRadius,
                         ),
                       ),
                       child: const Text(
                         'Create Account',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.2,
-                        ),
+                        style: AppTextStyles.button,
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 14),
+                  const SizedBox(height: AppSpacing.sm),
 
+                  // ⚪ Secondary Button
                   SizedBox(
                     width: double.infinity,
-                    height: 58,
+                    height: 56,
                     child: OutlinedButton(
                       onPressed: () {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const LoginScreen()),
-  );
-},
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const LoginScreen(),
+                          ),
+                        );
+                      },
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: textPrimary,
-                        backgroundColor: Colors.white,
-                        elevation: 0,
-                        side: const BorderSide(color: cardBorder),
+                        foregroundColor: AppColors.textPrimary,
+                        backgroundColor: AppColors.card,
+                        side: BorderSide(color: AppColors.border),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
+                          borderRadius: AppSpacing.cardRadius,
                         ),
                       ),
                       child: const Text(
                         'Log In',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: -0.2,
-                        ),
+                        style: AppTextStyles.body,
                       ),
                     ),
                   ),
