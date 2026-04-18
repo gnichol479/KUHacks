@@ -2,12 +2,70 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_spacing.dart';
+import '../../services/api_client.dart';
+import '../../services/auth_service.dart';
 
 import 'login_screen.dart';
 import '../home/home_screen.dart';
 
-class SignupScreen extends StatelessWidget {
+class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
+
+  @override
+  State<SignupScreen> createState() => _SignupScreenState();
+}
+
+class _SignupScreenState extends State<SignupScreen> {
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleSignup() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showError('Please enter your email and password.');
+      return;
+    }
+    if (password.length < 6) {
+      _showError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      // Create the account, then immediately authenticate so we land on home
+      // with a valid token persisted in SharedPreferences.
+      await AuthService.register(email, password);
+      await AuthService.login(email, password);
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
+    } on ApiException catch (e) {
+      _showError(e.message);
+    } catch (_) {
+      _showError('Could not reach the server. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,6 +138,10 @@ class SignupScreen extends StatelessWidget {
                         const SizedBox(height: AppSpacing.sm),
 
                         TextField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          autocorrect: false,
+                          textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             hintText: 'my@emailaddress.com',
                             hintStyle: const TextStyle(
@@ -116,7 +178,10 @@ class SignupScreen extends StatelessWidget {
                         const SizedBox(height: AppSpacing.sm),
 
                         TextField(
+                          controller: _passwordController,
                           obscureText: true,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) => _handleSignup(),
                           decoration: InputDecoration(
                             hintText: 'Create a password...',
                             hintStyle: const TextStyle(
@@ -150,14 +215,7 @@ class SignupScreen extends StatelessWidget {
                           width: double.infinity,
                           height: 56,
                           child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const HomeScreen(),
-                                ),
-                              );
-                            },
+                            onPressed: _isLoading ? null : _handleSignup,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primary,
                               foregroundColor: Colors.white,
@@ -166,10 +224,21 @@ class SignupScreen extends StatelessWidget {
                                 borderRadius: AppSpacing.cardRadius,
                               ),
                             ),
-                            child: const Text(
-                              'Continue',
-                              style: AppTextStyles.button,
-                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.4,
+                                      valueColor:
+                                          AlwaysStoppedAnimation<Color>(
+                                              Colors.white),
+                                    ),
+                                  )
+                                : const Text(
+                                    'Continue',
+                                    style: AppTextStyles.button,
+                                  ),
                           ),
                         ),
                       ],

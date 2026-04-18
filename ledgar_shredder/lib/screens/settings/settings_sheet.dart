@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../../services/auth_service.dart';
+import '../auth/auth_entry_screen.dart';
 
 import 'appearance_page.dart';
 import 'bank_wallet_page.dart';
@@ -93,6 +95,11 @@ class SettingsSheet extends StatelessWidget {
                 title: 'Help and Support',
                 onTap: () => _openPage(context, const HelpSupportPage()),
               ),
+              _SettingsSheetItem(
+                icon: Icons.logout_rounded,
+                title: 'Log Out',
+                onTap: () => _logout(context),
+              ),
 
               const SizedBox(height: 6),
 
@@ -131,6 +138,17 @@ class SettingsSheet extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => page),
+    );
+  }
+
+  static Future<void> _logout(BuildContext context) async {
+    // Drop the persisted JWT and reset the navigation stack to the auth flow.
+    final navigator = Navigator.of(context);
+    await AuthService.logout();
+    navigator.pop(); // close the bottom sheet
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AuthEntryScreen()),
+      (route) => false,
     );
   }
 }

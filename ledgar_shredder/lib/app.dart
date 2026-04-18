@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/auth/auth_entry_screen.dart';
+import 'screens/auth/splash_gate.dart';
 
 class LedgarShredderApp extends StatelessWidget {
   const LedgarShredderApp({super.key});
@@ -17,7 +17,7 @@ class LedgarShredderApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const AuthEntryScreen(),
+      home: const SplashGate(),
     );
   }
 }
