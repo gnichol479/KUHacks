@@ -19,6 +19,14 @@ from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 from pymongo.server_api import ServerApi
 
+from xrpl_utils import (
+    XRP_TO_USD_RATE,
+    convert_xrp_to_usd,
+    create_xrpl_wallet,
+    drops_to_xrp,
+    get_xrp_balance,
+)
+
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -97,7 +105,25 @@ def register():
             {"error": f"Password must be at least {MIN_PASSWORD_LEN} characters"}
         ), 400
 
+    # Pre-check duplicate so we don't burn a faucet wallet on a request that
+    # is going to fail at insert anyway.
+    if users.find_one({"email": email}):
+        return jsonify({"error": "User already exists"}), 409
+
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+
+    # Provision a TESTNET XRPL wallet for the new account. If the public
+    # faucet is unavailable we surface a 503 instead of half-creating a user.
+    try:
+        wallet = create_xrpl_wallet()
+    except Exception:
+        return jsonify({"error": "XRPL faucet unavailable, please retry"}), 503
+
+    # Best-effort balance fetch; helper returns 0 on any failure so this never
+    # blocks registration. The ledger speaks in drops — convert for display.
+    balance_drops = get_xrp_balance(wallet["address"])
+    balance_xrp = drops_to_xrp(balance_drops)
+    balance_usd = convert_xrp_to_usd(balance_xrp)
 
     try:
         users.insert_one(
@@ -105,12 +131,29 @@ def register():
                 "email": email,
                 "password": hashed,
                 "created_at": datetime.now(tz=timezone.utc),
+                "xrpl": {
+                    "address": wallet["address"],
+                    "seed": wallet["seed"],  # TESTNET ONLY — never returned by the API
+                    "public_key": wallet["public_key"],
+                    "balance_xrp": balance_xrp,
+                    "balance_usd": balance_usd,
+                    "conversion_rate": XRP_TO_USD_RATE,
+                },
             }
         )
     except DuplicateKeyError:
+        # Race with a concurrent registration that won the unique index.
         return jsonify({"error": "User already exists"}), 409
 
-    return jsonify({"message": "User created"}), 201
+    return jsonify(
+        {
+            "message": "User created",
+            "xrpl_address": wallet["address"],
+            "balance_xrp": balance_xrp,
+            "balance_usd": balance_usd,
+            "conversion_rate": XRP_TO_USD_RATE,
+        }
+    ), 201
 
 
 @app.route("/login", methods=["POST"])
@@ -146,19 +189,33 @@ def profile():
     except (InvalidId, TypeError):
         return jsonify({"error": "Invalid token subject"}), 401
 
-    user = users.find_one({"_id": oid}, {"password": 0})
+    # Strip the password hash AND the XRPL seed from the projection so neither
+    # ever leaves the server.
+    user = users.find_one({"_id": oid}, {"password": 0, "xrpl.seed": 0})
     if not user:
         return jsonify({"error": "User not found"}), 404
 
     created_at = user.get("created_at")
+    xrpl_doc = user.get("xrpl") or {}
     return jsonify(
         {
             "id": str(user["_id"]),
             "email": user["email"],
             "created_at": created_at.isoformat() if created_at else None,
+            "xrpl": {
+                "address": xrpl_doc.get("address"),
+                "public_key": xrpl_doc.get("public_key"),
+                # Default to 0 for legacy docs created before the USD fields
+                # were added — keeps /profile from crashing on older accounts.
+                "balance_xrp": xrpl_doc.get("balance_xrp", 0),
+                "balance_usd": xrpl_doc.get("balance_usd", 0),
+                "conversion_rate": xrpl_doc.get("conversion_rate", XRP_TO_USD_RATE),
+            },
         }
     )
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)

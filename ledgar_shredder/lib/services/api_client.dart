@@ -13,7 +13,7 @@ class ApiClient {
 
   /// Base URL of the Flask backend. The iPhone uses this LAN address to reach
   /// the laptop running `python app.py` on `0.0.0.0:5001`.
-  static const String baseUrl = 'http://10.108.93.11:5001';
+  static const String baseUrl = 'https://hackku-backend.fly.dev';
 
   /// SharedPreferences key for the persisted JWT.
   static const String tokenKey = 'auth_token';
