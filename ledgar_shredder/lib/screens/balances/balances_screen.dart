@@ -109,7 +109,7 @@ class _BalancesScreenState extends State<BalancesScreen> {
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: AppColors.primaryLight,
+                        color: AppColors.primary.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: Row(
@@ -313,7 +313,7 @@ class _BalanceListRow extends StatelessWidget {
       },
       leading: CircleAvatar(
         backgroundColor: isGroup
-            ? AppColors.primaryLight
+            ? AppColors.primary.withOpacity(0.1)
             : const Color(0xFFF1F2F6),
         child: Icon(
           isGroup ? Icons.groups : Icons.person,

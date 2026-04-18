@@ -6,6 +6,7 @@ import '../profile/profile_screen.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../theme/app_spacing.dart';
+import '../../theme/app_gradients.dart';
 
 
 class HomeScreen extends StatelessWidget {
@@ -108,50 +109,68 @@ class HomeScreen extends StatelessWidget {
 
                     const SizedBox(height: AppSpacing.lg),
 
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(AppSpacing.lg),
-                      decoration: BoxDecoration(
-                        color: AppColors.card,
-                        borderRadius: AppSpacing.cardRadius,
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('NET BALANCE', style: AppTextStyles.label),
-                          SizedBox(height: 14),
-                          Text(
-                            '+\$133.00',
-                            style: TextStyle(
-                              fontSize: 44,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.positive,
-                            ),
-                          ),
-                          SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _BalanceMiniStat(
-                                  label: 'You Owe',
-                                  amount: '\$82.00',
-                                  color: AppColors.negative,
-                                ),
-                              ),
-                              SizedBox(width: 16),
-                              Expanded(
-                                child: _BalanceMiniStat(
-                                  label: 'Owed to You',
-                                  amount: '\$215.00',
-                                  color: AppColors.positive,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
+Container(
+  width: double.infinity,
+  padding: const EdgeInsets.all(AppSpacing.lg),
+  decoration: BoxDecoration(
+    gradient: AppGradients.primaryCard,
+    borderRadius: AppSpacing.cardRadius,
+    boxShadow: [
+      BoxShadow(
+        color: Colors.black.withOpacity(0.08),
+        blurRadius: 24,
+        offset: const Offset(0, 12),
+      ),
+    ],
+  ),
+  child: const Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'NET BALANCE',
+        style: TextStyle(
+          color: Colors.white70,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      SizedBox(height: 14),
+      Text(
+        '+\$133.00',
+        style: TextStyle(
+          fontSize: 44,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
+      ),
+      SizedBox(height: 8),
+      Text(
+        '+ \$18.20 this week',
+        style: TextStyle(color: Colors.white70),
+      ),
+      SizedBox(height: 20),
+      Row(
+        children: [
+          Expanded(
+            child: _BalanceMiniStat(
+              label: 'You Owe',
+              amount: '\$82.00',
+              color: Colors.white,
+            ),
+          ),
+          SizedBox(width: 16),
+          Expanded(
+            child: _BalanceMiniStat(
+              label: 'Owed to You',
+              amount: '\$215.00',
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    ],
+  ),
+),
 
                     const SizedBox(height: AppSpacing.md),
 

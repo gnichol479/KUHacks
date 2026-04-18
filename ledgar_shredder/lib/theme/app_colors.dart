@@ -1,25 +1,21 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Backgrounds
-  static const Color background = Color(0xFFF7F7F8);
-  static const Color card = Colors.white;
+  static const background = Color(0xFFF7F7F8);
+  static const card = Colors.white;
 
-  // Primary
-  static const Color primary = Color(0xFF4F6EF7);
-  static const Color primaryLight = Color(0xFFE9EDFF);
+  static const primary = Color(0xFF4F6EF7);
 
-  // Text
-  static const Color textPrimary = Color(0xFF1C1C1E);
-  static const Color textSecondary = Color(0xFF6E6E73);
+  // NEW subtle accents inspired by image
+  static const accentPurple = Color(0xFF8E7CFF);
+  static const accentPink = Color(0xFFFF7CA8);
+  static const accentBlue = Color(0xFF5FD4FF);
 
-  // Borders / Dividers
-  static const Color border = Color(0xFFE5E5EA);
+  static const textPrimary = Color(0xFF171717);
+  static const textSecondary = Color(0xFF7A7A7A);
 
-  // Status
-  static const Color positive = Color(0xFF2ECC71);
-  static const Color negative = Color(0xFFFF3B30);
+  static const border = Color(0xFFE9E9EE);
 
-  // Misc
-  static const Color shadow = Colors.black12;
+  static const positive = Color(0xFF2E9B6F);
+  static const negative = Color(0xFFD96B6B);
 }
