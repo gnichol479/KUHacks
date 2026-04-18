@@ -17,140 +17,170 @@ class FriendScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFF0B0F1A),
       body: SafeArea(
-        child: Padding(
+        child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: ListView(
-            children: [
-              const SizedBox(height: 10),
+          children: [
+            const SizedBox(height: 10),
 
-              // 🔙 Back
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: const Row(
-                  children: [
-                    Icon(Icons.arrow_back, color: Colors.white70, size: 20),
-                    SizedBox(width: 6),
-                    Text("Back",
-                        style:
-                            TextStyle(color: Colors.white70, fontSize: 16)),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // 👤 Profile Header
-              Row(
+            // 🔙 BACK
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: const Row(
                 children: [
-                  const CircleAvatar(radius: 32),
-                  const SizedBox(width: 16),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "Net: $net",
-                        style: TextStyle(
-                          color: isNegative
-                              ? Colors.purpleAccent
-                              : Colors.lightBlueAccent,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
+                  Icon(Icons.arrow_back, color: Colors.white70, size: 20),
+                  SizedBox(width: 6),
+                  Text("Back",
+                      style:
+                          TextStyle(color: Colors.white70, fontSize: 16)),
                 ],
               ),
+            ),
 
-              const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
-              // 💰 Balance Card
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF111827),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: Column(
+            // 👤 HEADER
+            Row(
+              children: [
+                const CircleAvatar(radius: 32),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      "BALANCE BETWEEN YOU",
-                      style: TextStyle(color: Colors.white54),
-                    ),
-                    const SizedBox(height: 12),
                     Text(
-                      "\$45.00",
+                      name,
                       style: const TextStyle(
-                        color: Colors.purpleAccent,
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Net: $net",
+                      style: TextStyle(
+                        color: isNegative
+                            ? Colors.purpleAccent
+                            : Colors.lightBlueAccent,
                       ),
                     ),
-
-                    const SizedBox(height: 20),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _primaryButton("Settle Up"),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _secondaryButton("Forgive"),
-                        ),
-                      ],
-                    )
                   ],
                 ),
+              ],
+            ),
+
+            const SizedBox(height: 30),
+
+            // 🔥 GRAPH CARD (OCTAGON STYLE)
+            Container(
+              height: 220,
+              decoration: BoxDecoration(
+                color: const Color(0xFF111827),
+                borderRadius: BorderRadius.circular(28),
               ),
+              child: Stack(
+                children: [
+                  Center(
+                    child: Container(
+                      width: 140,
+                      height: 140,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white10,
+                          width: 2,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          net,
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                            color: isNegative
+                                ? Colors.purpleAccent
+                                : Colors.lightBlueAccent,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
 
-              const SizedBox(height: 24),
-
-              const Text(
-                "HISTORY",
-                style: TextStyle(
-                  color: Colors.white54,
-                  letterSpacing: 1.5,
-                ),
+                  // fake radial spokes (gives octagon feel)
+                  ...List.generate(8, (i) {
+                    return Transform.rotate(
+                      angle: i * 0.785, // 360/8
+                      child: Center(
+                        child: Container(
+                          width: 2,
+                          height: 100,
+                          color: Colors.white10,
+                        ),
+                      ),
+                    );
+                  })
+                ],
               ),
+            ),
 
-              const SizedBox(height: 12),
+            const SizedBox(height: 20),
 
-              _historyItem(
-                title: "Dinner at Nobu",
-                date: "Apr 12, 2026",
-                amount: "-\$45",
-                status: "Pending",
-                negative: true,
+            // 🔥 ACTION BUTTONS
+            Row(
+              children: [
+                Expanded(child: _primary("Settle Up")),
+                const SizedBox(width: 12),
+                Expanded(child: _secondary("Remind")),
+              ],
+            ),
+
+            const SizedBox(height: 30),
+
+            const Text(
+              "ANALYTICS",
+              style:
+                  TextStyle(color: Colors.white54, letterSpacing: 1.5),
+            ),
+
+            const SizedBox(height: 12),
+
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: const Color(0xFF111827),
+                borderRadius: BorderRadius.circular(24),
               ),
-
-              _historyItem(
-                title: "Birthday gift",
-                date: "Mar 15, 2026",
-                amount: "+\$30",
-                status: "Forgiven",
-                negative: false,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+  _stat("Total Paid", "\$320"),
+  _stat("You Paid", "\$150"),
+  _stat("They Paid", "\$170"),
+],
               ),
+            ),
 
-              const SizedBox(height: 100),
-            ],
-          ),
+            const SizedBox(height: 30),
+
+            const Text(
+              "HISTORY",
+              style:
+                  TextStyle(color: Colors.white54, letterSpacing: 1.5),
+            ),
+
+            const SizedBox(height: 12),
+
+            _history("Dinner at Nobu", "-\$45", true),
+            _history("Movie Night", "+\$20", false),
+            _history("Uber Split", "-\$15", true),
+
+            const SizedBox(height: 100),
+          ],
         ),
       ),
     );
   }
 
   // 🔹 BUTTONS
-
-  Widget _primaryButton(String text) {
+  Widget _primary(String text) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
@@ -160,17 +190,13 @@ class FriendScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       alignment: Alignment.center,
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
+      child: Text(text,
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.bold)),
     );
   }
 
-  Widget _secondaryButton(String text) {
+  Widget _secondary(String text) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16),
       decoration: BoxDecoration(
@@ -178,63 +204,50 @@ class FriendScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       alignment: Alignment.center,
-      child: const Text(
-        "Forgive",
-        style: TextStyle(color: Colors.white),
-      ),
+      child:
+          Text(text, style: const TextStyle(color: Colors.white)),
     );
   }
 
-  // 🔹 HISTORY ITEM
+  // 🔹 STATS
+  static Widget _stat(String label, String value) {
+    return Column(
+      children: [
+        Text(value,
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text(label,
+            style: const TextStyle(color: Colors.white54)),
+      ],
+    );
+  }
 
-  Widget _historyItem({
-    required String title,
-    required String date,
-    required String amount,
-    required String status,
-    required bool negative,
-  }) {
+  // 🔹 HISTORY
+  Widget _history(String title, String amount, bool negative) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(date,
-                    style: const TextStyle(color: Colors.white54)),
-              ],
-            ),
+            child: Text(title,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold)),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                amount,
-                style: TextStyle(
-                  color: negative
-                      ? Colors.purpleAccent
-                      : Colors.lightBlueAccent,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                status,
-                style: const TextStyle(color: Colors.white54),
-              ),
-            ],
+          Text(
+            amount,
+            style: TextStyle(
+              color: negative
+                  ? Colors.purpleAccent
+                  : Colors.lightBlueAccent,
+              fontWeight: FontWeight.bold,
+            ),
           )
         ],
       ),

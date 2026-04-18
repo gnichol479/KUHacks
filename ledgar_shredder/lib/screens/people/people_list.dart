@@ -2,11 +2,50 @@ import 'package:flutter/material.dart';
 import 'add_friend.dart';
 import 'friend_screen.dart';
 
-class PeopleListScreen extends StatelessWidget {
+class PeopleListScreen extends StatefulWidget {
   const PeopleListScreen({super.key});
 
   @override
+  State<PeopleListScreen> createState() => _PeopleListScreenState();
+}
+
+class _PeopleListScreenState extends State<PeopleListScreen> {
+  bool showPeople = true;
+
+  final people = const [
+    {
+      'name': 'Sarah Chen',
+      'subtitle': 'You owe \$45',
+      'amount': '-\$45',
+      'positive': false,
+    },
+    {
+      'name': 'Marcus Rivera',
+      'subtitle': 'They owe you \$120',
+      'amount': '+\$120',
+      'positive': true,
+    },
+    {
+      'name': 'Emily Zhang',
+      'subtitle': 'You owe \$22',
+      'amount': '-\$22',
+      'positive': false,
+    },
+  ];
+
+  final groups = const [
+    {
+      'name': 'Lake Trip',
+      'subtitle': '4 members • You are owed \$58',
+      'amount': '+\$58',
+      'positive': true,
+    },
+  ];
+
+  @override
   Widget build(BuildContext context) {
+    final activeList = showPeople ? people : groups;
+
     return Scaffold(
       backgroundColor: const Color(0xFF0B0F1A),
       body: SafeArea(
@@ -16,20 +55,19 @@ class PeopleListScreen extends StatelessWidget {
             children: [
               const SizedBox(height: 10),
 
-              // HEADER
+              // 🔝 HEADER
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    "People",
-                    style: TextStyle(
+                  Text(
+                    showPeople ? "People" : "Groups",
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
 
-                  // ✅ FIXED ADD BUTTON
                   GestureDetector(
                     onTap: () {
                       showModalBottomSheet(
@@ -63,24 +101,26 @@ class PeopleListScreen extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              // TOGGLE (People / Groups)
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF111827),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: const [
-                    Expanded(child: _Tab(selected: true, text: "People")),
-                    Expanded(child: _Tab(selected: false, text: "Groups")),
-                  ],
-                ),
+              // 🔄 TABS
+              Row(
+                children: [
+                  Expanded(
+                    child: _tab("People", showPeople, () {
+                      setState(() => showPeople = true);
+                    }),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _tab("Groups", !showPeople, () {
+                      setState(() => showPeople = false);
+                    }),
+                  ),
+                ],
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
 
-              // SEARCH
+              // 🔍 SEARCH
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -102,65 +142,21 @@ class PeopleListScreen extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              const _SectionTitle("ACTIVE"),
-
-              const SizedBox(height: 10),
-
-              _PeopleCard(
-                children: const [
-                  _PersonRow(
-                    name: "Sarah Chen",
-                    subtitle: "You owe \$45",
-                    amount: "-\$45",
-                    positive: false,
-                  ),
-                  _Divider(),
-                  _PersonRow(
-                    name: "Marcus Rivera",
-                    subtitle: "Owes you \$120",
-                    amount: "+\$120",
-                    positive: true,
-                  ),
-                  _Divider(),
-                  _PersonRow(
-                    name: "Emily Zhang",
-                    subtitle: "You owe \$22",
-                    amount: "-\$22",
-                    positive: false,
-                  ),
-                  _Divider(),
-                  _PersonRow(
-                    name: "James Okafor",
-                    subtitle: "Owes you \$35",
-                    amount: "+\$35",
-                    positive: true,
-                  ),
-                  _Divider(),
-                  _PersonRow(
-                    name: "Lily Nguyen",
-                    subtitle: "Owes you \$45",
-                    amount: "+\$45",
-                    positive: true,
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 20),
-
-              const _SectionTitle("SETTLED"),
-
-              const SizedBox(height: 10),
-
-              _PeopleCard(
-                children: const [
-                  _PersonRow(
-                    name: "David Kim",
-                    subtitle: "All settled up",
-                    amount: "✓",
-                    positive: true,
-                    isSettled: true,
-                  ),
-                ],
+              // 📋 LIST
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF111827),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Column(
+                  children: [
+                    for (int i = 0; i < activeList.length; i++) ...[
+                      _row(context, activeList[i]),
+                      if (i != activeList.length - 1)
+                        const Divider(color: Colors.white10),
+                    ]
+                  ],
+                ),
               ),
 
               const SizedBox(height: 100),
@@ -170,146 +166,63 @@ class PeopleListScreen extends StatelessWidget {
       ),
     );
   }
-}
 
-class _Tab extends StatelessWidget {
-  final bool selected;
-  final String text;
-
-  const _Tab({required this.selected, required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        color: selected ? const Color(0xFF1F2937) : Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        text,
-        style: TextStyle(
-          color: selected ? Colors.white : Colors.white54,
-          fontWeight: FontWeight.w600,
+  Widget _tab(String text, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF1F2937) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          text,
+          style: TextStyle(
+            color: selected ? Colors.white : Colors.white54,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );
   }
-}
 
-class _SectionTitle extends StatelessWidget {
-  final String text;
-  const _SectionTitle(this.text);
+  Widget _row(BuildContext context, Map item) {
+    final positive = item['positive'] as bool;
 
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: Colors.white54,
-        letterSpacing: 1.5,
-      ),
-    );
-  }
-}
-
-class _PeopleCard extends StatelessWidget {
-  final List<Widget> children;
-
-  const _PeopleCard({required this.children});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF111827),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(children: children),
-    );
-  }
-}
-
-class _PersonRow extends StatelessWidget {
-  final String name;
-  final String subtitle;
-  final String amount;
-  final bool positive;
-  final bool isSettled;
-
-  const _PersonRow({
-    required this.name,
-    required this.subtitle,
-    required this.amount,
-    required this.positive,
-    this.isSettled = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
+    return ListTile(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => FriendScreen(
-              name: name,
-              net: amount,
+              name: item['name'],
+              net: item['amount'],
               isNegative: !positive,
             ),
           ),
         );
       },
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            const CircleAvatar(radius: 22),
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold)),
-                  Text(subtitle,
-                      style: const TextStyle(color: Colors.white60)),
-                ],
-              ),
-            ),
-
-            Text(
-              amount,
-              style: TextStyle(
-                color: isSettled
-                    ? Colors.white54
-                    : positive
-                        ? Colors.lightBlueAccent
-                        : Colors.purpleAccent,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            )
-          ],
+      leading: const CircleAvatar(radius: 22),
+      title: Text(
+        item['name'],
+        style: const TextStyle(
+            color: Colors.white, fontWeight: FontWeight.bold),
+      ),
+      subtitle: Text(
+        item['subtitle'],
+        style: const TextStyle(color: Colors.white60),
+      ),
+      trailing: Text(
+        item['amount'],
+        style: TextStyle(
+          color: positive
+              ? Colors.lightBlueAccent
+              : Colors.purpleAccent,
+          fontWeight: FontWeight.bold,
         ),
       ),
-    );
-  }
-}
-
-class _Divider extends StatelessWidget {
-  const _Divider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 1,
-      margin: const EdgeInsets.symmetric(horizontal: 14),
-      color: Colors.white10,
     );
   }
 }
