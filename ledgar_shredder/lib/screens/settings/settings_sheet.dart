@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
+
 import 'appearance_page.dart';
 import 'bank_wallet_page.dart';
 import 'help_support_page.dart';
@@ -11,16 +13,16 @@ class SettingsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const textPrimary = Color(0xFF171717);
-    const borderColor = Color(0xFFE9E9EE);
-    const primaryBlue = Color(0xFF4F6EF7);
+    final textPrimary = AppColors.textPrimary;
+    final borderColor = AppColors.border;
+    final primaryBlue = AppColors.primary;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.card,
           borderRadius: BorderRadius.circular(28),
           boxShadow: const [
             BoxShadow(
@@ -39,12 +41,14 @@ class SettingsSheet extends StatelessWidget {
                 width: 44,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFD9DCE3),
+                  color: AppColors.border,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
+
               const SizedBox(height: 18),
-              const Align(
+
+              Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
                   'Settings',
@@ -56,7 +60,9 @@ class SettingsSheet extends StatelessWidget {
                   ),
                 ),
               ),
+
               const SizedBox(height: 18),
+
               _SettingsSheetItem(
                 icon: Icons.account_balance_wallet_outlined,
                 title: 'Bank and Wallet',
@@ -87,7 +93,9 @@ class SettingsSheet extends StatelessWidget {
                 title: 'Help and Support',
                 onTap: () => _openPage(context, const HelpSupportPage()),
               ),
+
               const SizedBox(height: 6),
+
               SizedBox(
                 width: double.infinity,
                 height: 54,
@@ -95,7 +103,7 @@ class SettingsSheet extends StatelessWidget {
                   onPressed: () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: primaryBlue,
-                    side: const BorderSide(color: borderColor),
+                    side: BorderSide(color: borderColor),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),
@@ -109,6 +117,7 @@ class SettingsSheet extends StatelessWidget {
                   ),
                 ),
               ),
+
               const SizedBox(height: 4),
             ],
           ),
@@ -139,9 +148,9 @@ class _SettingsSheetItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primaryBlue = Color(0xFF4F6EF7);
-    const textPrimary = Color(0xFF171717);
-    const borderColor = Color(0xFFE9E9EE);
+    final primaryBlue = AppColors.primary;
+    final textPrimary = AppColors.textPrimary;
+    final borderColor = AppColors.border;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -161,14 +170,17 @@ class _SettingsSheetItem extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: textPrimary,
                   ),
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: textPrimary),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: textPrimary,
+              ),
             ],
           ),
         ),

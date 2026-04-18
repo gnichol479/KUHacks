@@ -3,6 +3,11 @@ import '../balances/balances_screen.dart';
 import '../scanner/scan_screen.dart';
 import '../profile/profile_screen.dart';
 
+import '../../theme/app_colors.dart';
+import '../../theme/app_text_styles.dart';
+import '../../theme/app_spacing.dart';
+
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -19,15 +24,6 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const background = Color(0xFFF7F7F8);
-    const cardColor = Colors.white;
-    const primaryBlue = Color(0xFF4F6EF7);
-    const textPrimary = Color(0xFF171717);
-    const textSecondary = Color(0xFF7A7A7A);
-    const borderColor = Color(0xFFE9E9EE);
-    const owedGreen = Color(0xFF2E9B6F);
-    const oweRed = Color(0xFFD96B6B);
-
     final balances = [
       {
         'name': 'Sarah Chen',
@@ -60,13 +56,18 @@ class HomeScreen extends StatelessWidget {
     ];
 
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  120,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -79,22 +80,12 @@ class HomeScreen extends StatelessWidget {
                             children: [
                               Text(
                                 'Welcome back,',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: textSecondary,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                                style: AppTextStyles.bodySecondary,
                               ),
                               SizedBox(height: 4),
                               Text(
                                 'Your Ledger',
-                                style: TextStyle(
-                                  fontSize: 34,
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.1,
-                                  letterSpacing: -0.8,
-                                  color: textPrimary,
-                                ),
+                                style: AppTextStyles.titleLarge,
                               ),
                             ],
                           ),
@@ -103,72 +94,49 @@ class HomeScreen extends StatelessWidget {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color: cardColor,
+                            color: AppColors.card,
                             borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: borderColor),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x10000000),
-                                blurRadius: 16,
-                                offset: Offset(0, 6),
-                              ),
-                            ],
+                            border: Border.all(color: AppColors.border),
                           ),
                           child: const Icon(
                             Icons.person_rounded,
-                            color: textPrimary,
-                            size: 22,
+                            color: AppColors.textPrimary,
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 28),
+
+                    const SizedBox(height: AppSpacing.lg),
+
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(AppSpacing.lg),
                       decoration: BoxDecoration(
-                        color: cardColor,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: borderColor),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x12000000),
-                            blurRadius: 20,
-                            offset: Offset(0, 8),
-                          ),
-                        ],
+                        color: AppColors.card,
+                        borderRadius: AppSpacing.cardRadius,
+                        border: Border.all(color: AppColors.border),
                       ),
                       child: const Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'NET BALANCE',
-                            style: TextStyle(
-                              fontSize: 13,
-                              letterSpacing: 0.8,
-                              fontWeight: FontWeight.w700,
-                              color: textSecondary,
-                            ),
-                          ),
+                          Text('NET BALANCE', style: AppTextStyles.label),
                           SizedBox(height: 14),
                           Text(
                             '+\$133.00',
                             style: TextStyle(
                               fontSize: 44,
                               fontWeight: FontWeight.w700,
-                              height: 1.0,
-                              letterSpacing: -1.2,
-                              color: owedGreen,
+                              color: AppColors.positive,
                             ),
                           ),
-                          SizedBox(height: 26),
+                          SizedBox(height: 20),
                           Row(
                             children: [
                               Expanded(
                                 child: _BalanceMiniStat(
                                   label: 'You Owe',
                                   amount: '\$82.00',
-                                  color: oweRed,
+                                  color: AppColors.negative,
                                 ),
                               ),
                               SizedBox(width: 16),
@@ -176,7 +144,7 @@ class HomeScreen extends StatelessWidget {
                                 child: _BalanceMiniStat(
                                   label: 'Owed to You',
                                   amount: '\$215.00',
-                                  color: owedGreen,
+                                  color: AppColors.positive,
                                 ),
                               ),
                             ],
@@ -184,54 +152,52 @@ class HomeScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+
+                    const SizedBox(height: AppSpacing.md),
+
                     const _InfoPill(
                       icon: Icons.account_balance_wallet_outlined,
                       text: '\$40 available for auto-settle',
                     ),
-                    const SizedBox(height: 12),
+
+                    const SizedBox(height: AppSpacing.sm),
+
                     const _InfoPill(
                       icon: Icons.route_outlined,
                       text: 'Optimized: Pay Sarah instead',
                     ),
-                    const SizedBox(height: 18),
+
+                    const SizedBox(height: AppSpacing.md),
+
                     SizedBox(
                       width: double.infinity,
-                      height: 58,
+                      height: 56,
                       child: ElevatedButton.icon(
                         onPressed: () => _showAddIouSheet(context),
-                        icon: const Icon(Icons.add, size: 20),
-                        label: const Text(
-                          'Add IOU',
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add IOU',
+                            style: AppTextStyles.button),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryBlue,
-                          foregroundColor: Colors.white,
+                          backgroundColor: AppColors.primary,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
+                            borderRadius: AppSpacing.cardRadius,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 28),
-                    const Text(
-                      'ACTIVE BALANCES',
-                      style: TextStyle(
-                        fontSize: 13,
-                        letterSpacing: 0.8,
-                        fontWeight: FontWeight.w700,
-                        color: textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
+
+                    const SizedBox(height: AppSpacing.lg),
+
+                    const Text('ACTIVE BALANCES',
+                        style: AppTextStyles.label),
+
+                    const SizedBox(height: AppSpacing.md),
+
                     ...balances.map(
                       (item) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
+                        padding:
+                            const EdgeInsets.only(bottom: AppSpacing.sm),
                         child: _BalanceRow(
                           name: item['name'] as String,
                           subtitle: item['subtitle'] as String,
@@ -245,13 +211,12 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             ),
+
             Container(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-              decoration: const BoxDecoration(
-                color: background,
-                border: Border(
-                  top: BorderSide(color: borderColor),
-                ),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                border: Border(top: BorderSide(color: AppColors.border)),
               ),
 child: Row(
   mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -304,6 +269,8 @@ child: Row(
     );
   }
 }
+
+/* KEEP ALL YOUR ORIGINAL HELPER CLASSES BELOW THIS LINE UNCHANGED */
 
 class _AddIouSheet extends StatefulWidget {
   const _AddIouSheet();
@@ -747,9 +714,6 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const primaryBlue = Color(0xFF4F6EF7);
-    const textSecondary = Color(0xFF9A9AA0);
-
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -759,15 +723,20 @@ class _NavItem extends StatelessWidget {
           Icon(
             icon,
             size: 24,
-            color: selected ? primaryBlue : textSecondary,
+            color: selected
+                ? AppColors.primary
+                : AppColors.textSecondary,
           ),
           const SizedBox(height: 4),
           Text(
             label,
             style: TextStyle(
               fontSize: 12,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: selected ? primaryBlue : textSecondary,
+              fontWeight:
+                  selected ? FontWeight.w600 : FontWeight.w500,
+              color: selected
+                  ? AppColors.primary
+                  : AppColors.textSecondary,
             ),
           ),
         ],

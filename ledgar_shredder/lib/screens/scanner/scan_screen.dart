@@ -2,6 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../theme/app_colors.dart';
+import '../../theme/app_text_styles.dart';
+import '../../theme/app_spacing.dart';
+
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
 
@@ -49,37 +53,33 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const background = Color(0xFFF7F7F8);
-    const textPrimary = Color(0xFF171717);
-    const textSecondary = Color(0xFF7A7A7A);
-    const borderColor = Color(0xFFE9E9EE);
-    const primaryBlue = Color(0xFF4F6EF7);
-
     return Scaffold(
-      backgroundColor: background,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.md,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 'Scan Receipt',
-                style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.8,
-                  color: textPrimary,
-                ),
+                style: AppTextStyles.titleLarge,
               ),
-              const SizedBox(height: 24),
+
+              const SizedBox(height: AppSpacing.lg),
+
               Expanded(
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: borderColor),
+                    color: AppColors.card,
+                    borderRadius: AppSpacing.cardRadius,
+                    border: Border.all(color: AppColors.border),
                   ),
                   child: _capturedImage == null
                       ? const Center(
@@ -89,22 +89,19 @@ class _ScanScreenState extends State<ScanScreen> {
                               Icon(
                                 Icons.camera_alt_outlined,
                                 size: 52,
-                                color: textSecondary,
+                                color: AppColors.textSecondary,
                               ),
-                              SizedBox(height: 12),
+                              SizedBox(height: AppSpacing.sm),
                               Text(
                                 'Point at a receipt or take a photo',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
-                                  color: textPrimary,
-                                ),
+                                style: AppTextStyles.titleMedium,
                               ),
                             ],
                           ),
                         )
                       : ClipRRect(
-                          borderRadius: BorderRadius.circular(24),
+                          borderRadius:
+                              AppSpacing.cardRadius,
                           child: Image.file(
                             _capturedImage!,
                             fit: BoxFit.cover,
@@ -114,10 +111,12 @@ class _ScanScreenState extends State<ScanScreen> {
                         ),
                 ),
               ),
-              const SizedBox(height: 20),
+
+              const SizedBox(height: AppSpacing.md),
+
               SizedBox(
                 width: double.infinity,
-                height: 58,
+                height: 56,
                 child: ElevatedButton.icon(
                   onPressed: _isOpeningCamera ? null : _openCamera,
                   icon: _isOpeningCamera
@@ -130,13 +129,16 @@ class _ScanScreenState extends State<ScanScreen> {
                           ),
                         )
                       : const Icon(Icons.camera_alt_outlined),
-                  label: Text(_capturedImage == null ? 'Capture' : 'Retake'),
+                  label: Text(
+                    _capturedImage == null ? 'Capture' : 'Retake',
+                    style: AppTextStyles.button,
+                  ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryBlue,
+                    backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: AppSpacing.cardRadius,
                     ),
                   ),
                 ),

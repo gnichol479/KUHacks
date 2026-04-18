@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../theme/app_colors.dart';
 
 class LedgerDetailScreen extends StatelessWidget {
   final String name;
@@ -28,10 +29,10 @@ class LedgerDetailScreen extends StatelessWidget {
     const owedGreen = Color(0xFF2E9B6F);
     const oweRed = Color(0xFFD96B6B);
 
-    final statusColor = positive ? owedGreen : oweRed;
-
-    return Scaffold(
-      backgroundColor: background,
+final statusColor = positive
+    ? AppColors.positive
+    : AppColors.negative;    return Scaffold(
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),

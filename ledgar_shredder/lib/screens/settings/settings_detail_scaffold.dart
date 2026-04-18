@@ -15,7 +15,6 @@ class SettingsDetailScaffold extends StatelessWidget {
     const background = Color(0xFFF7F7F8);
     const cardColor = Colors.white;
     const textPrimary = Color(0xFF171717);
-    const textSecondary = Color(0xFF7A7A7A);
     const borderColor = Color(0xFFE9E9EE);
 
     return Scaffold(
@@ -84,6 +83,7 @@ class SettingsTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final Widget? trailing;
+  final VoidCallback? onTap; // 👈 NEW
 
   const SettingsTile({
     super.key,
@@ -91,6 +91,7 @@ class SettingsTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.trailing,
+    this.onTap, // 👈 NEW
   });
 
   @override
@@ -99,50 +100,54 @@ class SettingsTile extends StatelessWidget {
     const textSecondary = Color(0xFF7A7A7A);
     const primaryBlue = Color(0xFF4F6EF7);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: primaryBlue.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(14),
+    return GestureDetector(
+      onTap: onTap, // 👈 NEW
+      behavior: HitTestBehavior.opaque, // 👈 makes full row clickable
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: primaryBlue.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: primaryBlue, size: 20),
             ),
-            child: Icon(icon, color: primaryBlue, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: textPrimary,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: textPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: textSecondary,
-                    height: 1.35,
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: textSecondary,
+                      height: 1.35,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          if (trailing != null) ...[
-            const SizedBox(width: 12),
-            trailing!,
+            if (trailing != null) ...[
+              const SizedBox(width: 12),
+              trailing!,
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
