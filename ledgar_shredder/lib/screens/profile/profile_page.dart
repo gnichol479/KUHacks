@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'auto_pay.dart';
 import 'add_funds.dart';
+import '../settings/settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -68,14 +69,24 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ],
                 ),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF111827),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(Icons.settings, color: Colors.white70),
-                )
+GestureDetector(
+  onTap: () {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const SettingsSheet(),
+    );
+  },
+  child: Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: const Color(0xFF111827),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: const Icon(Icons.settings, color: Colors.white70),
+  ),
+),
               ],
             ),
 

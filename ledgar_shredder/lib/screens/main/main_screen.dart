@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'new_ledgar.dart';
 import '../people/people_list.dart';
 import '../scan/scan_screen.dart';
+import '../profile/profile_page.dart';
 
 class MainScreen extends StatefulWidget {
   final int initialIndex;
@@ -57,6 +58,7 @@ class _MainScreenState extends State<MainScreen>
   ),
   const PeopleListScreen(),
   const ScanScreen(), // ✅ THIS IS NEW
+  const ProfilePage(),
   const Center(child: Text("Profile", style: TextStyle(color: Colors.white))),
 ];
 

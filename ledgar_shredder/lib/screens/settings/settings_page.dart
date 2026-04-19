@@ -1,214 +1,232 @@
 import 'package:flutter/material.dart';
-import 'privacy.dart';
-import 'security.dart';
+import '../auth/auth_entry_screen.dart';
+import 'settings_detail_page.dart';
 
-class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key});
+// 🔑 Keys (prevents "Coming soon" bugs)
+class SettingsKeys {
+  static const bank = 'bank';
+  static const security = 'security';
+  static const appearance = 'appearance';
+  static const privacy = 'privacy';
+  static const support = 'support';
+}
+
+class SettingsSheet extends StatefulWidget {
+  const SettingsSheet({super.key});
+
+  @override
+  State<SettingsSheet> createState() => _SettingsSheetState();
+}
+
+class _SettingsSheetState extends State<SettingsSheet> {
+  bool notificationsOn = true;
+  bool darkMode = true;
+
+  void _logout() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const AuthScreen()),
+      (route) => false,
+    );
+  }
+
+  void _openPage(String type) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SettingsDetailPage(type: type),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF12141A),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-
-              const SizedBox(height: 16),
-
-              // HEADER
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    "Settings",
-                    style: TextStyle(
-                      color: Color(0xFFEDEFF3),
-                      fontSize: 22,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: Colors.white),
-                  )
-                ],
-              ),
-
-              const SizedBox(height: 20),
-
-              // ================= ACCOUNT =================
-              _sectionTitle("ACCOUNT"),
-
-              _card([
-                _tile(
-                  icon: Icons.account_balance_wallet_outlined,
-                  title: "Bank & Wallet",
-                  subtitle: "Connect payment methods",
-                  onTap: () {
-                    // TODO: open bank page
-                  },
-                ),
-                _divider(),
-                _tile(
-                  icon: Icons.security,
-                  title: "Security",
-                  subtitle: "Password, biometrics",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SecurityPage(),
-                      ),
-                    );
-                  },
-                ),
-              ]),
-
-              const SizedBox(height: 20),
-
-              // ================= PREFERENCES =================
-              _sectionTitle("PREFERENCES"),
-
-              _card([
-                _tile(
-                  icon: Icons.palette_outlined,
-                  title: "Appearance",
-                  subtitle: "Dark mode",
-                  onTap: () {},
-                ),
-                _divider(),
-                _tile(
-                  icon: Icons.notifications_none,
-                  title: "Notifications",
-                  subtitle: "On",
-                  onTap: () {},
-                ),
-                _divider(),
-                _tile(
-                  icon: Icons.lock_outline,
-                  title: "Privacy",
-                  subtitle: "Control who sees your activity",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const PrivacyPage(),
-                      ),
-                    );
-                  },
-                ),
-              ]),
-
-              const SizedBox(height: 20),
-
-              // ================= SUPPORT =================
-              _sectionTitle("SUPPORT"),
-
-              _card([
-                _tile(
-                  icon: Icons.help_outline,
-                  title: "Help & Support",
-                  subtitle: "FAQ, contact us",
-                  onTap: () {},
-                ),
-              ]),
-
-              const SizedBox(height: 20),
-
-              // ================= LOG OUT =================
-              _card([
-                _tile(
-                  icon: Icons.logout,
-                  title: "Log Out",
-                  subtitle: "",
-                  isDanger: true,
-                  onTap: () {
-                    // TODO: logout logic
-                  },
-                ),
-              ]),
-
-              const SizedBox(height: 40),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ================= WIDGETS =================
-
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFF9AA0A6),
-          fontSize: 11,
-          letterSpacing: 1,
-        ),
-      ),
-    );
-  }
-
-  Widget _card(List<Widget> children) {
     return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1D24),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF2A2F3A)),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: const BoxDecoration(
+        color: Color(0xFF111827),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      child: Column(children: children),
+      child: SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            // drag handle
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Settings",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: const Icon(Icons.close, color: Colors.white54),
+                )
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // 🔹 ACCOUNT
+            _section("ACCOUNT"),
+
+            _tile(
+              Icons.account_balance,
+              "Bank & Wallet",
+              "Connect payment methods",
+              () => _openPage(SettingsKeys.bank),
+            ),
+
+            _tile(
+              Icons.lock,
+              "Security",
+              "Password, biometrics",
+              () => _openPage(SettingsKeys.security),
+            ),
+
+            const SizedBox(height: 20),
+
+            // 🔹 PREFERENCES
+            _section("PREFERENCES"),
+
+            _tile(
+              Icons.dark_mode,
+              "Appearance",
+              "Light / Dark mode",
+              () => _openPage(SettingsKeys.appearance),
+            ),
+
+            _toggleTile(
+              Icons.notifications,
+              "Notifications",
+              notificationsOn,
+              (val) => setState(() => notificationsOn = val),
+            ),
+
+            _tile(
+              Icons.visibility,
+              "Privacy",
+              "Control who sees your activity",
+              () => _openPage(SettingsKeys.privacy),
+            ),
+
+            const SizedBox(height: 20),
+
+            // 🔹 SUPPORT
+            _section("SUPPORT"),
+
+            _tile(
+              Icons.help_outline,
+              "Help & Support",
+              "FAQ, contact us",
+              () => _openPage(SettingsKeys.support),
+            ),
+
+            const SizedBox(height: 30),
+
+            // 🔥 LOGOUT
+            GestureDetector(
+              onTap: _logout,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  "Log Out",
+                  style: TextStyle(
+                    color: Colors.redAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _tile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-    bool isDanger = false,
-  }) {
+  // 🔹 SECTION LABEL
+  Widget _section(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white54,
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
+  }
+
+  // 🔹 NORMAL TILE
+  Widget _tile(
+      IconData icon, String title, String subtitle, VoidCallback onTap) {
     return ListTile(
       onTap: onTap,
       leading: Container(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: isDanger
-              ? const Color(0x26D96B6B)
-              : const Color(0xFF2A2F3A),
-          borderRadius: BorderRadius.circular(8),
+          color: const Color(0xFF1F2937),
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(
-          icon,
-          color: isDanger ? const Color(0xFFD96B6B) : Colors.white,
-        ),
+        child: Icon(icon, color: Colors.white70),
       ),
       title: Text(
         title,
-        style: TextStyle(
-          color: isDanger ? const Color(0xFFD96B6B) : const Color(0xFFEDEFF3),
-          fontWeight: FontWeight.w500,
-        ),
+        style: const TextStyle(
+            color: Colors.white, fontWeight: FontWeight.w600),
       ),
-      subtitle: subtitle.isEmpty
-          ? null
-          : Text(
-              subtitle,
-              style: const TextStyle(color: Color(0xFF9AA0A6)),
-            ),
-      trailing: const Icon(Icons.chevron_right, color: Colors.white),
+      subtitle:
+          Text(subtitle, style: const TextStyle(color: Colors.white54)),
+      trailing: const Icon(Icons.chevron_right, color: Colors.white38),
     );
   }
 
-  Widget _divider() {
-    return const Divider(
-      height: 1,
-      color: Color(0xFF222633),
+  // 🔹 TOGGLE TILE
+  Widget _toggleTile(
+      IconData icon, String title, bool value, Function(bool) onChanged) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1F2937),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(icon, color: Colors.white70),
+      ),
+      title:
+          Text(title, style: const TextStyle(color: Colors.white)),
+      trailing: Switch(
+        value: value,
+        onChanged: onChanged,
+        activeColor: const Color(0xFF7F8CFF),
+      ),
     );
   }
 }
