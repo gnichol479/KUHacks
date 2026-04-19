@@ -7,7 +7,9 @@ enable demo "Settle Up" payments. The faucet wallet returned by
 
 from xrpl.clients import JsonRpcClient
 from xrpl.models.requests import AccountInfo
-from xrpl.wallet import generate_faucet_wallet
+from xrpl.models.transactions import Payment
+from xrpl.transaction import submit_and_wait
+from xrpl.wallet import Wallet, generate_faucet_wallet
 
 XRPL_TESTNET_URL = "https://s.altnet.rippletest.net:51234"
 
@@ -62,3 +64,44 @@ def drops_to_xrp(drops: int) -> float:
 def convert_xrp_to_usd(xrp_amount: float) -> float:
     """Apply the fixed display-layer conversion rate (1 XRP = 1.50 USD)."""
     return round(xrp_amount * XRP_TO_USD_RATE, 2)
+
+
+def usd_to_drops(usd_amount: float) -> int:
+    """Convert a USD amount into raw XRPL drops using the fixed display rate."""
+    xrp = usd_amount / XRP_TO_USD_RATE
+    return int(round(xrp * DROPS_PER_XRP))
+
+
+def send_xrp_payment(
+    sender_seed: str,
+    destination: str,
+    drops: int,
+    client: JsonRpcClient = xrpl_client,
+) -> dict:
+    """Submit a Payment on testnet from the seed-derived wallet to `destination`.
+
+    Returns the validated tx hash + engine result on success. Raises
+    `RuntimeError` with the engine result string on any non-tesSUCCESS outcome
+    so callers can surface a meaningful error to the UI.
+    """
+    if drops <= 0:
+        raise RuntimeError("XRPL payment amount must be greater than 0 drops")
+
+    wallet = Wallet.from_seed(sender_seed)
+    tx = Payment(
+        account=wallet.classic_address,
+        destination=destination,
+        amount=str(drops),
+    )
+    response = submit_and_wait(tx, client, wallet)
+    result = response.result or {}
+    engine = (
+        (result.get("meta") or {}).get("TransactionResult")
+        or result.get("engine_result")
+    )
+    if engine != "tesSUCCESS":
+        raise RuntimeError(f"XRPL payment failed: {engine or 'unknown'}")
+    return {
+        "hash": result.get("hash"),
+        "engine_result": engine,
+    }

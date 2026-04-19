@@ -6,3 +6,4 @@ bcrypt==4.2.0
 PyJWT==2.9.0
 gunicorn==21.2.0
 xrpl-py==4.1.0
+requests==2.32.3

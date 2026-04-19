@@ -1,0 +1,9 @@
+# Secrets — keep all local env files out of git
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+
+# macOS
+.DS_Store
