@@ -22,12 +22,27 @@ class _ProfilePageState extends State<ProfilePage> {
   Map<String, dynamic>? profileData;
   bool isLoading = true;
   bool _autoPayBusy = false;
+  // Memory NFTs minted via the "let 'em slide" flow. Hydrated from
+  // /memories on every profile load so the list stays in sync after a
+  // forgive happens elsewhere in the app.
+  List<Map<String, dynamic>> _memories = const [];
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
     _hydrateAutoPay();
+    _loadMemories();
+  }
+
+  Future<void> _loadMemories() async {
+    try {
+      final raw = await _auth.fetchMemories();
+      if (!mounted) return;
+      setState(() => _memories = raw.cast<Map<String, dynamic>>());
+    } catch (e) {
+      debugPrint('Failed to load memories: $e');
+    }
   }
 
   Future<void> _hydrateAutoPay() async {
@@ -84,9 +99,7 @@ class _ProfilePageState extends State<ProfilePage> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF111827),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
           title,
           style: const TextStyle(
@@ -94,10 +107,7 @@ class _ProfilePageState extends State<ProfilePage> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        content: Text(
-          message,
-          style: const TextStyle(color: Colors.white70),
-        ),
+        content: Text(message, style: const TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -134,9 +144,9 @@ class _ProfilePageState extends State<ProfilePage> {
       await AutoPayService.instance.save(const AutoPaySettings.off());
       if (!mounted) return;
       setState(() => _autoPay = const AutoPaySettings.off());
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Auto-Settle disabled.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Auto-Settle disabled.')));
       return;
     }
 
@@ -182,7 +192,8 @@ class _ProfilePageState extends State<ProfilePage> {
       inScope.add({
         'ledger_id': l['ledger_id'],
         'friend_id': id,
-        'friend_name': (other['full_name'] as String?) ??
+        'friend_name':
+            (other['full_name'] as String?) ??
             ((other['username'] as String?) != null
                 ? '@${other['username']}'
                 : 'Unknown'),
@@ -194,21 +205,20 @@ class _ProfilePageState extends State<ProfilePage> {
     final scopeLabel = scopeChoice.scope == AutoPayScope.all
         ? 'Auto-Settle ALL'
         : (scopeChoice.friendIds.length == 1
-            ? 'Auto-Settle ${scopeChoice.friendNames[scopeChoice.friendIds.first] ?? "friend"}'
-            : 'Auto-Settle ${scopeChoice.friendIds.length} friends');
+              ? 'Auto-Settle ${scopeChoice.friendNames[scopeChoice.friendIds.first] ?? "friend"}'
+              : 'Auto-Settle ${scopeChoice.friendIds.length} friends');
     final previewOk = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _DebtPreviewSheet(
-        scopeLabel: scopeLabel,
-        debts: inScope,
-      ),
+      builder: (_) => _DebtPreviewSheet(scopeLabel: scopeLabel, debts: inScope),
     );
     if (!mounted || previewOk != true) return;
 
-    final total =
-        inScope.fold<double>(0, (sum, e) => sum + (e['debt'] as double));
+    final total = inScope.fold<double>(
+      0,
+      (sum, e) => sum + (e['debt'] as double),
+    );
 
     if (inScope.isNotEmpty) {
       final confirmed = await _confirm(
@@ -227,24 +237,37 @@ class _ProfilePageState extends State<ProfilePage> {
     final newSettings = scopeChoice.scope == AutoPayScope.all
         ? const AutoPaySettings.all()
         : AutoPaySettings.friends(
-            scopeChoice.friendIds, scopeChoice.friendNames);
+            scopeChoice.friendIds,
+            scopeChoice.friendNames,
+          );
     await AutoPayService.instance.save(newSettings);
     if (!mounted) return;
     setState(() => _autoPay = newSettings);
 
     if (inScope.isEmpty) {
-      _snack(
-        'Auto-Settle enabled. Future IOUs in this scope will auto-pay.',
-      );
+      _snack('Auto-Settle enabled. Future IOUs in this scope will auto-pay.');
     }
   }
 
   Future<void> _runBatch(List<Map<String, dynamic>> debts) async {
+    // XRPL Batch caps inner transactions at 8. If the user owes more than
+    // 8 people, fan out into chunks of 8 — each chunk is its own atomic
+    // ALLORNOTHING batch so partial chunks failing won't undo the ones
+    // that already succeeded.
+    const int maxPerBatch = 8;
+    final chunks = <List<Map<String, dynamic>>>[];
+    for (var i = 0; i < debts.length; i += maxPerBatch) {
+      chunks.add(debts.sublist(i, (i + maxPerBatch).clamp(0, debts.length)));
+    }
+
+    final total = debts.length;
     final progress = ValueNotifier<AutoPayProgress>(
       AutoPayProgress(
         friendName: debts.first['friend_name'] as String,
         amount: debts.first['debt'] as double,
-        status: 'Starting (1 of ${debts.length})...',
+        status: chunks.length == 1
+            ? 'Submitting XRPL Batch (1 tx, $total payments)...'
+            : 'Submitting batch 1 of ${chunks.length}...',
       ),
     );
 
@@ -258,28 +281,42 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
 
-    int success = 0;
+    int settledCount = 0;
+    double settledAmount = 0;
     final failures = <String>[];
-    for (var i = 0; i < debts.length; i++) {
-      final d = debts[i];
-      final name = d['friend_name'] as String;
-      final amount = d['debt'] as double;
-      progress.value = AutoPayProgress(
-        friendName: name,
-        amount: amount,
-        status: 'Sending ${i + 1} of ${debts.length}...',
+    String? lastTxHash;
+
+    for (var c = 0; c < chunks.length; c++) {
+      final chunk = chunks[c];
+      final chunkTotal = chunk.fold<double>(
+        0,
+        (a, b) => a + (b['debt'] as double),
       );
+      progress.value = AutoPayProgress(
+        friendName: chunks.length == 1
+            ? '${chunk.length} recipient${chunk.length == 1 ? '' : 's'}'
+            : 'Batch ${c + 1} of ${chunks.length}',
+        amount: chunkTotal,
+        status:
+            'Submitting XRPL Batch '
+            '(${c + 1}/${chunks.length}, ${chunk.length} payments)...',
+      );
+
       try {
-        await _auth.settleUp(
-          ledgerId: d['ledger_id'] as String,
-          amount: amount,
-          method: 'xrp',
+        final result = await _auth.settleBatch(
+          items: chunk
+              .map((d) => {'ledger_id': d['ledger_id'], 'amount': d['debt']})
+              .toList(),
+          mode: 'ALLORNOTHING',
         );
-        success++;
+        // ALLORNOTHING means every settlement in this chunk landed.
+        settledCount += chunk.length;
+        settledAmount += chunkTotal;
+        lastTxHash = (result['tx_hash'] as String?) ?? lastTxHash;
       } on ApiException catch (e) {
-        failures.add('$name: ${e.message}');
+        failures.add('Batch ${c + 1}: ${e.message}');
       } catch (e) {
-        failures.add('$name: $e');
+        failures.add('Batch ${c + 1}: $e');
       }
     }
 
@@ -287,18 +324,23 @@ class _ProfilePageState extends State<ProfilePage> {
     progress.dispose();
 
     if (!mounted) return;
-    final total = debts.length;
     if (failures.isEmpty) {
-      _snack('Auto-paid \$${_sumDebts(debts).toStringAsFixed(2)} '
-          'across $total ledger${total == 1 ? '' : 's'}.');
+      final hashSuffix = lastTxHash != null
+          ? ' (tx ${lastTxHash.substring(0, 8)}…)'
+          : '';
+      _snack(
+        'Auto-paid \$${settledAmount.toStringAsFixed(2)} across '
+        '$settledCount ledger${settledCount == 1 ? '' : 's'} '
+        'in ${chunks.length} XRPL Batch tx'
+        '${chunks.length == 1 ? '' : 's'}$hashSuffix.',
+      );
     } else {
-      _snack('Settled $success of $total. '
-          'Failed: ${failures.first}${failures.length > 1 ? '…' : ''}');
+      _snack(
+        'Settled $settledCount of $total. '
+        '${failures.first}${failures.length > 1 ? '…' : ''}',
+      );
     }
   }
-
-  double _sumDebts(List<Map<String, dynamic>> debts) =>
-      debts.fold<double>(0, (a, b) => a + (b['debt'] as double));
 
   void _snack(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -313,19 +355,16 @@ class _ProfilePageState extends State<ProfilePage> {
       );
     }
 
-    final fullName =
-        (profileData?['profile']?['full_name'] as String?) ?? '';
-    final username =
-        (profileData?['profile']?['username'] as String?) ?? '';
+    final fullName = (profileData?['profile']?['full_name'] as String?) ?? '';
+    final username = (profileData?['profile']?['username'] as String?) ?? '';
     final balanceUsd = profileData?['xrpl']?['balance_usd'] ?? 0;
     final balanceText = '\$${balanceUsd.toString()}';
     final score = profileData?['profile']?['accountability_score'] ?? 0;
-    final avatarB64 =
-        profileData?['profile']?['avatar_base64'] as String?;
-    final Uint8List? avatarBytes =
-        (avatarB64 != null && avatarB64.isNotEmpty) ? _tryDecode(avatarB64) : null;
-    final initial =
-        (fullName.isNotEmpty ? fullName[0] : 'A').toUpperCase();
+    final avatarB64 = profileData?['profile']?['avatar_base64'] as String?;
+    final Uint8List? avatarBytes = (avatarB64 != null && avatarB64.isNotEmpty)
+        ? _tryDecode(avatarB64)
+        : null;
+    final initial = (fullName.isNotEmpty ? fullName[0] : 'A').toUpperCase();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B0F1A),
@@ -397,6 +436,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     );
                     if (!mounted) return;
                     await _loadProfile();
+                    await _loadMemories();
                   },
                   child: Container(
                     padding: const EdgeInsets.all(12),
@@ -478,9 +518,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: Row(
                       children: [
                         Icon(
-                          _autoPay.isOn
-                              ? Icons.flash_on
-                              : Icons.flash_off,
+                          _autoPay.isOn ? Icons.flash_on : Icons.flash_off,
                           color: _autoPay.isOn
                               ? Colors.lightBlueAccent
                               : Colors.white54,
@@ -520,8 +558,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       child: const Text(
                         "+ Add Funds",
                         style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold),
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -544,98 +583,65 @@ class _ProfilePageState extends State<ProfilePage> {
                 color: const Color(0xFF111827),
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        score.toString(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 40,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const Text("+5 this month",
-                          style: TextStyle(
-                              color: Colors.lightBlueAccent)),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: List.generate(6, (index) {
-                      return Column(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: index == 5
-                                  ? const Color(0xFF7F8CFF)
-                                  : const Color(0xFF1F2937),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            ["Nov", "Dec", "Jan", "Feb", "Mar", "Apr"][index],
-                            style:
-                                const TextStyle(color: Colors.white54),
-                          )
-                        ],
-                      );
-                    }),
-                  )
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 30),
-
-            const Text(
-              "TOKENS",
-              style: TextStyle(color: Colors.white54, letterSpacing: 1.5),
-            ),
-
-            const SizedBox(height: 12),
-
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: const Color(0xFF111827),
-                borderRadius: BorderRadius.circular(24),
-              ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _token("💰", "Balance", "120"),
-                  _token("⚡", "Spent", "45"),
-                  _token("🎁", "Earned", "75"),
+                  Text(
+                    score.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 40,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      "",
+                      style: TextStyle(color: Colors.lightBlueAccent),
+                    ),
+                  ),
                 ],
               ),
             ),
 
             const SizedBox(height: 30),
-
-            const Text(
-              "BADGES",
-              style: TextStyle(color: Colors.white54, letterSpacing: 1.5),
-            ),
-
-            const SizedBox(height: 12),
 
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(child: _badge(Icons.verified, "Reliable")),
-                const SizedBox(width: 12),
-                Expanded(child: _badge(Icons.favorite, "Generous")),
-                const SizedBox(width: 12),
-                Expanded(child: _badge(Icons.flash_on, "Active")),
+                const Text(
+                  "MEMORIES",
+                  style:
+                      TextStyle(color: Colors.white54, letterSpacing: 1.5),
+                ),
+                if (_memories.isNotEmpty)
+                  Text(
+                    "${_memories.length} on XRPL",
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      letterSpacing: 1.2,
+                      fontSize: 12,
+                    ),
+                  ),
               ],
             ),
+
+            const SizedBox(height: 12),
+
+            if (_memories.isEmpty)
+              _emptyMemories()
+            else
+              Column(
+                children: [
+                  for (final m in _memories.take(8))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _memoryCard(m),
+                    ),
+                ],
+              ),
 
             const SizedBox(height: 100),
           ],
@@ -652,36 +658,212 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Widget _token(String emoji, String label, String value) {
-    return Column(
-      children: [
-        Text(emoji, style: const TextStyle(fontSize: 24)),
-        const SizedBox(height: 6),
-        Text(value,
-            style: const TextStyle(
-                color: Colors.white, fontWeight: FontWeight.bold)),
-        Text(label,
-            style: const TextStyle(color: Colors.white54, fontSize: 12)),
-      ],
-    );
-  }
-
-  Widget _badge(IconData icon, String label) {
+  Widget _emptyMemories() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20),
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: const Color(0xFF111827),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white12),
       ),
       child: Column(
         children: [
-          Icon(icon, color: Colors.lightBlueAccent),
-          const SizedBox(height: 8),
-          Text(label,
-              style: const TextStyle(color: Colors.white70)),
+          const Icon(
+            Icons.auto_awesome_outlined,
+            color: Color(0xFF7F8CFF),
+            size: 28,
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'No memories yet',
+            style:
+                TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            "Forgive a friend's debt and mint a memory NFT to "
+            'commemorate it on the XRPL.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
         ],
       ),
     );
+  }
+
+  Widget _memoryCard(Map<String, dynamic> memory) {
+    final direction = (memory['direction'] as String?) ?? 'received';
+    final issued = direction == 'issued';
+    final issuer = (memory['issuer'] as Map?) ?? const {};
+    final recipient = (memory['recipient'] as Map?) ?? const {};
+    final counterpart = issued ? recipient : issuer;
+    final counterpartName =
+        (counterpart['full_name'] as String?)?.trim().isNotEmpty == true
+            ? counterpart['full_name'] as String
+            : ((counterpart['username'] as String?) != null
+                ? '@${counterpart['username']}'
+                : 'someone');
+    final amount = (memory['amount'] as num?)?.toDouble() ?? 0;
+    final message = (memory['message'] as String?)?.trim() ?? '';
+    final nftId = (memory['nft_id'] as String?) ?? '';
+    final nftShort = nftId.length >= 12
+        ? '${nftId.substring(0, 8)}…${nftId.substring(nftId.length - 4)}'
+        : nftId;
+    final createdAt = memory['created_at'] as String?;
+    final dateLabel = _shortDate(createdAt);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF111827),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: issued
+              ? const Color(0xFF7F8CFF).withOpacity(0.4)
+              : const Color(0xFF22C55E).withOpacity(0.4),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: issued
+                        ? const [Color(0xFF5B6CFF), Color(0xFF7F8CFF)]
+                        : const [Color(0xFF22C55E), Color(0xFF4ADE80)],
+                  ),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome,
+                  color: Colors.white,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      issued
+                          ? 'You forgave $counterpartName'
+                          : '$counterpartName forgave you',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '\$${amount.toStringAsFixed(2)}'
+                      '${dateLabel.isNotEmpty ? ' · $dateLabel' : ''}',
+                      style: const TextStyle(
+                        color: Colors.white60,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: issued
+                      ? const Color(0xFF7F8CFF).withOpacity(0.18)
+                      : const Color(0xFF22C55E).withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  issued ? 'ISSUED' : 'RECEIVED',
+                  style: TextStyle(
+                    color: issued
+                        ? const Color(0xFF7F8CFF)
+                        : const Color(0xFF22C55E),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (message.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F2937),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '"$message"',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          ],
+          if (nftId.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(
+                  Icons.link,
+                  color: Colors.white38,
+                  size: 14,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'NFT $nftShort',
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _shortDate(String? iso) {
+    if (iso == null || iso.isEmpty) return '';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return '';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final local = dt.toLocal();
+    return '${months[local.month - 1]} ${local.day}';
   }
 }
 
@@ -690,11 +872,11 @@ class _ScopeChoice {
   final List<String> friendIds;
   final Map<String, String> friendNames;
   const _ScopeChoice.all()
-      : scope = AutoPayScope.all,
-        friendIds = const [],
-        friendNames = const {};
+    : scope = AutoPayScope.all,
+      friendIds = const [],
+      friendNames = const {};
   const _ScopeChoice.friends(this.friendIds, this.friendNames)
-      : scope = AutoPayScope.friends;
+    : scope = AutoPayScope.friends;
 }
 
 class _ScopePickerSheet extends StatefulWidget {
@@ -728,7 +910,8 @@ class _ScopePickerSheetState extends State<_ScopePickerSheet> {
         if (id == null) continue;
         mapped.add({
           'id': id,
-          'name': (other['full_name'] as String?) ??
+          'name':
+              (other['full_name'] as String?) ??
               ((other['username'] as String?) != null
                   ? '@${other['username']}'
                   : 'Unknown'),
@@ -839,9 +1022,7 @@ class _ScopePickerSheetState extends State<_ScopePickerSheet> {
                       } else {
                         _selectedIds
                           ..clear()
-                          ..addAll(
-                            _contacts.map((c) => c['id'] as String),
-                          );
+                          ..addAll(_contacts.map((c) => c['id'] as String));
                       }
                     }),
                     child: Text(
@@ -912,16 +1093,12 @@ class _ScopePickerSheetState extends State<_ScopePickerSheet> {
                                 }),
                                 activeColor: const Color(0xFF7F8CFF),
                                 checkColor: Colors.white,
-                                side: const BorderSide(
-                                  color: Colors.white54,
-                                ),
+                                side: const BorderSide(color: Colors.white54),
                               ),
                               Expanded(
                                 child: Text(
                                   c['name'] as String,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                  ),
+                                  style: const TextStyle(color: Colors.white),
                                 ),
                               ),
                             ],
@@ -981,15 +1158,14 @@ class _DebtPreviewSheet extends StatelessWidget {
   final String scopeLabel;
   final List<Map<String, dynamic>> debts;
 
-  const _DebtPreviewSheet({
-    required this.scopeLabel,
-    required this.debts,
-  });
+  const _DebtPreviewSheet({required this.scopeLabel, required this.debts});
 
   @override
   Widget build(BuildContext context) {
-    final total =
-        debts.fold<double>(0, (sum, e) => sum + (e['debt'] as double));
+    final total = debts.fold<double>(
+      0,
+      (sum, e) => sum + (e['debt'] as double),
+    );
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -1056,7 +1232,9 @@ class _DebtPreviewSheet extends StatelessWidget {
                     final d = debts[i];
                     return Container(
                       padding: const EdgeInsets.symmetric(
-                          vertical: 14, horizontal: 16),
+                        vertical: 14,
+                        horizontal: 16,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF1F2937),
                         borderRadius: BorderRadius.circular(14),
@@ -1087,10 +1265,7 @@ class _DebtPreviewSheet extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Total',
-                    style: TextStyle(color: Colors.white60),
-                  ),
+                  const Text('Total', style: TextStyle(color: Colors.white60)),
                   Text(
                     '\$${total.toStringAsFixed(2)}',
                     style: const TextStyle(

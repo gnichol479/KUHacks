@@ -134,15 +134,48 @@ class AuthService {
     );
   }
 
+  /// Settle 1-8 ledger debts atomically inside a single XRPL Batch
+  /// transaction. With `mode: "ALLORNOTHING"` (default), either every
+  /// payment goes through and every ledger gets its settlement entry, or
+  /// none of them do. Used by the home-tab "Auto-Settle" card and any
+  /// multi-recipient picker.
+  Future<Map<String, dynamic>> settleBatch({
+    required List<Map<String, dynamic>> items,
+    String mode = 'ALLORNOTHING',
+  }) {
+    return ApiClient.postJson(
+      '/ledgers/settle-batch',
+      {
+        'items': items,
+        'mode': mode,
+      },
+      auth: true,
+    );
+  }
+
   Future<Map<String, dynamic>> forgiveDebt({
     required String ledgerId,
     required double amount,
+    bool mintMemory = false,
+    String? memoryMessage,
   }) {
     return ApiClient.postJson(
       '/ledgers/$ledgerId/forgive',
-      {'amount': amount},
+      {
+        'amount': amount,
+        if (mintMemory) 'mint_memory': true,
+        if (mintMemory) 'memory_message': (memoryMessage ?? '').trim(),
+      },
       auth: true,
     );
+  }
+
+  /// Memories are XRPL NFTs minted as a keepsake when a user forgives a
+  /// debt. The endpoint returns every memory the caller has issued or
+  /// received, newest first.
+  Future<List<dynamic>> fetchMemories() async {
+    final result = await ApiClient.getDecoded('/memories', auth: true);
+    return result is List ? result : const [];
   }
 
   Future<List<dynamic>> fetchRequests() async {

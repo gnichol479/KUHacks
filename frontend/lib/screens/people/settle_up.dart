@@ -22,6 +22,11 @@ class SettleUpSheet extends StatefulWidget {
 class _SettleUpSheetState extends State<SettleUpSheet> {
   final AuthService _auth = AuthService();
   late final TextEditingController _amountController;
+  // Memory-NFT inputs are only relevant on the "Let 'em slide" path —
+  // they're shown inline beneath the amount field whenever the user has
+  // a positive credit balance with the friend.
+  final TextEditingController _memoryMsgController = TextEditingController();
+  bool _mintMemory = false;
   bool _submitting = false;
   String? _error;
 
@@ -46,6 +51,7 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
   @override
   void dispose() {
     _amountController.dispose();
+    _memoryMsgController.dispose();
     super.dispose();
   }
 
@@ -238,18 +244,29 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
       return;
     }
 
+    final memoryMsg = _memoryMsgController.text.trim();
+    final mintMemory = _mintMemory;
+    final memoryLine = mintMemory
+        ? (memoryMsg.isEmpty
+            ? '\n\nA memory NFT will be minted to ${widget.friendName} on '
+                'the XRPL.'
+            : '\n\nA memory NFT (with your message) will be minted to '
+                '${widget.friendName} on the XRPL.')
+        : '';
+
     final confirmed = await _confirm(
       title: "Let 'em slide?",
       message:
           "Forgive \$${amount.toStringAsFixed(2)} of ${widget.friendName}'s "
           'debt? This will be recorded in the ledger history and cannot be '
-          'undone.',
+          'undone.$memoryLine',
       confirmLabel: "Let 'em slide",
     );
     if (!confirmed || !mounted) return;
 
     debugPrint(
-      'FORGIVE ledgerId=${widget.ledgerId} amount=$amount',
+      'FORGIVE ledgerId=${widget.ledgerId} amount=$amount '
+      'mintMemory=$mintMemory',
     );
 
     setState(() => _submitting = true);
@@ -257,6 +274,8 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
       final result = await _auth.forgiveDebt(
         ledgerId: widget.ledgerId,
         amount: amount,
+        mintMemory: mintMemory,
+        memoryMessage: memoryMsg,
       );
       if (!mounted) return;
       debugPrint('FORGIVE result=$result');
@@ -272,9 +291,37 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
         return;
       }
 
+      // If the caller asked for a memory but the mint failed (e.g. the
+      // recipient hasn't provisioned a wallet yet), the forgiveness still
+      // applied — we just surface the chain error inline so they know
+      // why no NFT was created.
+      final memoryError = result['memory_error'];
+      if (mintMemory && memoryError is String && memoryError.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Forgiven, but memory NFT failed: $memoryError'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      } else if (mintMemory && result['memory'] is Map) {
+        final mem = result['memory'] as Map;
+        final nftId = (mem['nft_id'] as String?) ?? '';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              nftId.isNotEmpty
+                  ? 'Memory NFT minted (${nftId.substring(0, 8)}…) on XRPL.'
+                  : 'Memory NFT minted on XRPL.',
+            ),
+          ),
+        );
+      }
+
       Navigator.pop(context, {
         'entry': entry,
         'balance': balance,
+        'memory': result['memory'],
+        'memory_error': result['memory_error'],
       });
     } on ApiException catch (e) {
       debugPrint('FORGIVE ApiException ${e.statusCode}: ${e.message}');
@@ -377,7 +424,9 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
                     ],
                   ),
                 ),
-              if (_isCredit)
+              if (_isCredit) ...[
+                _memoryNftCard(canTap: canTap),
+                const SizedBox(height: 16),
                 Opacity(
                   opacity: canTap ? 1.0 : 0.5,
                   child: GestureDetector(
@@ -404,17 +453,19 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
                                 strokeWidth: 2,
                               ),
                             )
-                          : const Text(
-                              "Let 'em slide",
-                              style: TextStyle(
+                          : Text(
+                              _mintMemory
+                                  ? "Let 'em slide + Mint Memory"
+                                  : "Let 'em slide",
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                     ),
                   ),
-                )
-              else
+                ),
+              ] else
                 Row(
                   children: [
                     Expanded(
@@ -489,6 +540,98 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Inline card on the "Let 'em slide" sheet that lets the user opt into
+  /// minting a memory NFT for the recipient. The toggle is the primary
+  /// affordance; the message field expands underneath when it's on so we
+  /// don't waste vertical space when nobody's minting.
+  Widget _memoryNftCard({required bool canTap}) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F2937),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _mintMemory
+              ? const Color(0xFF7F8CFF).withOpacity(0.7)
+              : Colors.white12,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.auto_awesome,
+                color: Color(0xFF7F8CFF),
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Mint a Memory NFT',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Sent to their XRPL wallet as a keepsake.',
+                      style: TextStyle(color: Colors.white60, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _mintMemory,
+                onChanged: canTap
+                    ? (v) => setState(() => _mintMemory = v)
+                    : null,
+                activeColor: const Color(0xFF7F8CFF),
+              ),
+            ],
+          ),
+          if (_mintMemory) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _memoryMsgController,
+              enabled: canTap,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 3,
+              minLines: 2,
+              maxLength: 280,
+              decoration: InputDecoration(
+                hintText: 'Optional message — "Thanks for the lunch!"',
+                hintStyle: const TextStyle(color: Colors.white38),
+                filled: true,
+                fillColor: const Color(0xFF111827),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                counterStyle: const TextStyle(color: Colors.white38),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Issuer: you · Recipient: them · Amount + timestamp are '
+              'embedded on-chain.',
+              style: TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+          ],
+        ],
       ),
     );
   }

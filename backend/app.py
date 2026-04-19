@@ -19,6 +19,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from dotenv import load_dotenv
 from flask import Flask, g, jsonify, request
+from flask_cors import CORS
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 from pymongo.server_api import ServerApi
@@ -29,6 +30,8 @@ from xrpl_utils import (
     create_xrpl_wallet,
     drops_to_xrp,
     get_xrp_balance,
+    mint_memory_nft,
+    send_xrp_batch,
     send_xrp_payment,
     usd_to_drops,
 )
@@ -65,12 +68,30 @@ def initialize_accountability_score() -> int:
 
 app = Flask(__name__)
 
+# Allow the Flutter web client (and any other browser-based caller) to hit
+# this API cross-origin. Mobile/desktop Flutter ignores CORS entirely, so
+# this header set is purely for the web build.
+CORS(
+    app,
+    resources={r"/*": {"origins": "*"}},
+    supports_credentials=False,
+    expose_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "Accept"],
+    methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+)
+
 client = MongoClient(MONGO_URI, server_api=ServerApi("1"))
 db = client["hackku_db"]
 users = db["users"]
 ledgers = db["ledgers"]
 groups = db["groups"]
 entry_requests = db["entry_requests"]
+# "Memories" — when a user forgives a debt they may optionally mint an NFT
+# on the XRPL testnet for the debtor as a keepsake. We store the off-chain
+# context (full message, USD amount, named participants, ledger pointer)
+# next to the on-chain handles so the profile screen can render the NFT
+# without a fresh chain crawl on every load.
+memories = db["memories"]
 
 # Enforce one account per email at the database layer
 users.create_index("email", unique=True)
@@ -156,6 +177,13 @@ entry_requests.create_index("to_user_id")
 entry_requests.create_index("from_user_id")
 entry_requests.create_index([("scope", 1), ("ledger_id", 1)])
 entry_requests.create_index([("scope", 1), ("group_id", 1)])
+
+# Memory lookups: "memories I gave" and "memories I received" both need
+# to be O(log n). nft_id is unique across the testnet so a unique index
+# also doubles as a duplicate-mint guard.
+memories.create_index("issuer_id")
+memories.create_index("recipient_id")
+memories.create_index("nft_id", unique=True, sparse=True)
 
 
 def _issue_token(user_id: str, email: str) -> str:
@@ -1183,12 +1211,283 @@ def settle_ledger(ledger_id: str):
     ), 201
 
 
+@app.route("/ledgers/settle-batch", methods=["POST"])
+@require_auth
+def settle_ledgers_batch():
+    """Settle 1-8 ledger debts in a single XRPL Batch transaction with the
+    ALLORNOTHING flag — either every Payment goes through and every ledger
+    gets its settlement entry, or none of them do (and we don't write
+    anything to Mongo). Powers the home-tab "Auto-Settle" card and any
+    multi-recipient flow.
+
+    Body:
+        { "items": [
+            { "ledger_id": "<oid>", "amount": <usd> },
+            ...
+          ],
+          "mode": "ALLORNOTHING"  // optional, defaults to ALLORNOTHING
+        }
+
+    Returns:
+        { "tx_hash": "...", "engine_result": "tesSUCCESS",
+          "settlements": [ { "ledger_id": ..., "entry": ..., "balance": ... } ] }
+    """
+    me = g.user_id
+    data = request.get_json(silent=True) or {}
+    items = data.get("items")
+    mode = (data.get("mode") or "ALLORNOTHING").strip().upper()
+
+    if not isinstance(items, list) or not items:
+        return jsonify({"error": "items must be a non-empty list"}), 400
+    if len(items) > 8:
+        return jsonify({"error": "XRPL Batch supports at most 8 inner txns"}), 400
+
+    # ---- Validation pass: load every ledger, compute debt, resolve the
+    # recipient address, and convert to drops. We do this BEFORE submitting
+    # anything to the XRPL so a single bad row aborts the batch atomically.
+    sender_doc = users.find_one({"_id": ObjectId(me)}, {"xrpl": 1})
+    sender_seed = ((sender_doc or {}).get("xrpl") or {}).get("seed")
+    if not sender_seed:
+        return jsonify({"error": "Your wallet is not provisioned yet"}), 409
+
+    plans = []  # list of dicts with everything needed to apply post-batch
+    payments = []  # list of (destination, drops) for the XRPL Batch
+    seen_ledgers = set()
+
+    for raw in items:
+        if not isinstance(raw, dict):
+            return jsonify({"error": "Each item must be an object"}), 400
+        ledger_id = raw.get("ledger_id")
+        amount_in = raw.get("amount")
+        try:
+            lid = ObjectId(str(ledger_id))
+        except (InvalidId, TypeError):
+            return jsonify({"error": f"Invalid ledger_id: {ledger_id}"}), 400
+        if lid in seen_ledgers:
+            return jsonify(
+                {"error": f"Duplicate ledger_id in batch: {ledger_id}"}
+            ), 400
+        seen_ledgers.add(lid)
+        try:
+            amount = float(amount_in)
+        except (TypeError, ValueError):
+            return jsonify({"error": "amount must be a number"}), 400
+        if not (amount > 0):
+            return jsonify({"error": "amount must be greater than 0"}), 400
+
+        doc = ledgers.find_one(
+            {"_id": lid, "users": me, "status": "accepted"}
+        )
+        if not doc:
+            return jsonify({"error": f"Ledger not found: {ledger_id}"}), 404
+
+        sign_factor = _viewer_sign(doc, me)
+        raw_balance = float(doc.get("balance", 0) or 0)
+        viewer_balance = raw_balance * sign_factor
+        if viewer_balance >= 0:
+            return jsonify(
+                {"error": f"Nothing to settle on ledger {ledger_id}"}
+            ), 400
+        debt = abs(viewer_balance)
+        if amount > debt + 0.01:
+            return jsonify(
+                {"error": f"Amount exceeds debt on ledger {ledger_id}"}
+            ), 400
+
+        other_id = next((u for u in doc.get("users", []) if u != me), None)
+        if not other_id:
+            return jsonify(
+                {"error": f"Ledger {ledger_id} is missing the other party"}
+            ), 409
+        try:
+            recipient_doc = users.find_one(
+                {"_id": ObjectId(other_id)}, {"xrpl.address": 1}
+            )
+        except (InvalidId, TypeError):
+            return jsonify({"error": "Invalid user id on ledger"}), 409
+        recipient_address = (
+            (recipient_doc or {}).get("xrpl") or {}
+        ).get("address")
+        if not recipient_address:
+            return jsonify(
+                {"error": f"Recipient wallet missing for ledger {ledger_id}"}
+            ), 409
+
+        drops = usd_to_drops(amount)
+        if drops <= 0:
+            return jsonify(
+                {"error": f"Amount too small for XRPL on ledger {ledger_id}"}
+            ), 400
+
+        me_is_users0 = doc.get("users", [None])[0] == me
+        viewer_sign = 1 if me_is_users0 else -1
+        signed_delta = amount * viewer_sign
+
+        plans.append(
+            {
+                "lid": lid,
+                "doc": doc,
+                "other_id": other_id,
+                "amount": amount,
+                "sign_factor": sign_factor,
+                "signed_delta": signed_delta,
+                "raw_balance": raw_balance,
+            }
+        )
+        payments.append((recipient_address, drops))
+
+    # ---- One XRPL Batch transaction. Per the spec, ALLORNOTHING means we
+    # either get every Payment validated or zero — so we only mutate Mongo
+    # on tesSUCCESS, keeping the off-chain ledger consistent with the chain.
+    try:
+        tx_result = send_xrp_batch(sender_seed, payments, mode=mode)
+    except Exception as exc:
+        return jsonify({"error": f"XRPL batch failed: {exc}"}), 502
+
+    # ---- Apply settlement entries to every ledger now that the batch
+    # committed atomically on chain.
+    now = datetime.now(tz=timezone.utc)
+    settlements = []
+    affected_users = {me}
+    for plan in plans:
+        entry_doc = {
+            "_id": ObjectId(),
+            "description": f"Settled ${plan['amount']:.2f} via XRP (batch)",
+            "amount": plan["amount"],
+            "delta_users0": plan["signed_delta"],
+            "created_by": me,
+            "created_at": now,
+            "method": "xrp",
+            "tx_hash": tx_result.get("hash"),
+            "batch": True,
+        }
+        ledgers.update_one(
+            {"_id": plan["lid"]},
+            {
+                "$push": {"entries": entry_doc},
+                "$inc": {"balance": plan["signed_delta"]},
+                "$set": {"updated_at": now},
+            },
+        )
+        new_balance = (
+            (plan["raw_balance"] + plan["signed_delta"]) * plan["sign_factor"]
+        )
+        settlements.append(
+            {
+                "ledger_id": str(plan["lid"]),
+                "entry": _serialize_entry(entry_doc, plan["sign_factor"], me),
+                "balance": new_balance,
+            }
+        )
+        affected_users.add(plan["other_id"])
+
+    # Refresh wallet caches + accountability scores once per user instead
+    # of N times each — a single batch can hit the same friend repeatedly
+    # only if the client passed dupes, which we already rejected.
+    for uid in affected_users:
+        _refresh_user_xrpl_cache(uid)
+        _compute_accountability_score(uid)
+
+    return jsonify(
+        {
+            "tx_hash": tx_result.get("hash"),
+            "engine_result": tx_result.get("engine_result"),
+            "settlements": settlements,
+        }
+    ), 201
+
+
+def _memory_uri_payload(
+    *,
+    message: str,
+    amount: float,
+    issuer_username: str,
+    recipient_username: str,
+    timestamp: datetime,
+) -> str:
+    """Build the on-chain JSON payload that ships inside the NFT URI.
+
+    The XRPL caps NFT URIs at 256 raw bytes, so we keep the on-chain blob
+    compact (single-letter keys, message trimmed) and stash the full record
+    off-chain in Mongo. If the trimmed payload still overflows we keep
+    chopping the message until it fits — minting must never fail just
+    because someone wrote a long memo.
+    """
+    base = {
+        "v": 1,
+        "k": "memory",
+        "amt": round(amount, 2),
+        "ts": int(timestamp.timestamp()),
+        "f": (issuer_username or "")[:24],
+        "t": (recipient_username or "")[:24],
+    }
+    # Iteratively shrink the message until the encoded payload fits.
+    msg = (message or "").strip()
+    for limit in (140, 100, 60, 30, 0):
+        candidate = dict(base)
+        if msg:
+            candidate["m"] = msg[:limit] if limit else ""
+        encoded = json.dumps(candidate, separators=(",", ":"), ensure_ascii=False)
+        if len(encoded.encode("utf-8")) <= 240:
+            return encoded
+    # Fallback: drop the message entirely — never observed in practice.
+    return json.dumps(base, separators=(",", ":"))
+
+
+def _serialize_memory(doc: dict, viewer_id: str) -> dict:
+    """Shape a memory doc for client consumption. Adds `direction` so the
+    UI can immediately tell whether the viewer issued or received it."""
+    issuer_id = doc.get("issuer_id")
+    recipient_id = doc.get("recipient_id")
+    direction = "issued" if viewer_id == issuer_id else "received"
+    created = doc.get("created_at")
+    return {
+        "id": str(doc.get("_id")),
+        "direction": direction,
+        "message": doc.get("message") or "",
+        "amount": doc.get("amount"),
+        "ledger_id": (
+            str(doc["ledger_id"]) if doc.get("ledger_id") else None
+        ),
+        "issuer": {
+            "id": issuer_id,
+            "full_name": doc.get("issuer_full_name"),
+            "username": doc.get("issuer_username"),
+        },
+        "recipient": {
+            "id": recipient_id,
+            "full_name": doc.get("recipient_full_name"),
+            "username": doc.get("recipient_username"),
+        },
+        "nft_id": doc.get("nft_id"),
+        "mint_hash": doc.get("mint_hash"),
+        "accept_hash": doc.get("accept_hash"),
+        "issuer_address": doc.get("issuer_address"),
+        "recipient_address": doc.get("recipient_address"),
+        "created_at": created.isoformat() if created else None,
+    }
+
+
 @app.route("/ledgers/<ledger_id>/forgive", methods=["POST"])
 @require_auth
 def forgive_ledger(ledger_id: str):
     """Voluntarily reduce the credit the caller is owed on `ledger_id`
     without any XRPL transfer. Only valid when the caller is currently in
-    the positive (the other party owes them). Body: { "amount": float }."""
+    the positive (the other party owes them).
+
+    Body:
+        {
+          "amount": float,
+          "mint_memory": bool (optional, default false),
+          "memory_message": string (optional, trimmed to 280 chars)
+        }
+
+    If `mint_memory` is true we additionally mint an XRPL NFT (issuer =
+    forgiver, recipient = debtor). The forgiveness itself is committed to
+    Mongo BEFORE the NFT mint so a flaky testnet never blocks the user's
+    intent — if the mint fails, the response carries `memory_error` and
+    `memory: null` instead of HTTP 502.
+    """
     me = g.user_id
     try:
         lid = ObjectId(ledger_id)
@@ -1204,6 +1503,12 @@ def forgive_ledger(ledger_id: str):
     if not (amount > 0):
         return jsonify({"error": "amount must be greater than 0"}), 400
 
+    mint_memory = bool(data.get("mint_memory", False))
+    memory_message = (data.get("memory_message") or "")
+    if not isinstance(memory_message, str):
+        return jsonify({"error": "memory_message must be a string"}), 400
+    memory_message = memory_message.strip()[:280]
+
     doc = ledgers.find_one({"_id": lid, "users": me, "status": "accepted"})
     if not doc:
         return jsonify({"error": "Ledger not found"}), 404
@@ -1216,6 +1521,10 @@ def forgive_ledger(ledger_id: str):
     credit = viewer_balance
     if amount > credit + 0.01:
         return jsonify({"error": "Amount exceeds what they owe you"}), 400
+
+    other_id = next((u for u in doc.get("users", []) if u != me), None)
+    if not other_id:
+        return jsonify({"error": "Ledger is missing the other party"}), 409
 
     me_is_users0 = doc.get("users", [None])[0] == me
     viewer_sign = 1 if me_is_users0 else -1
@@ -1242,12 +1551,103 @@ def forgive_ledger(ledger_id: str):
     )
 
     new_balance = (raw_balance + signed) * sign
-    return jsonify(
-        {
-            "entry": _serialize_entry(entry_doc, sign, me),
-            "balance": new_balance,
-        }
-    ), 201
+
+    # ---- Optional memory NFT. Best-effort — failures are reported but do
+    # not undo the forgiveness above.
+    memory_payload = None
+    memory_error = None
+    if mint_memory:
+        try:
+            issuer_doc = users.find_one(
+                {"_id": ObjectId(me)},
+                {"xrpl": 1, "profile.full_name": 1, "profile.username": 1},
+            ) or {}
+            recipient_doc = users.find_one(
+                {"_id": ObjectId(other_id)},
+                {"xrpl": 1, "profile.full_name": 1, "profile.username": 1},
+            ) or {}
+            issuer_seed = ((issuer_doc.get("xrpl") or {}).get("seed"))
+            issuer_addr = ((issuer_doc.get("xrpl") or {}).get("address"))
+            recipient_seed = ((recipient_doc.get("xrpl") or {}).get("seed"))
+            recipient_addr = ((recipient_doc.get("xrpl") or {}).get("address"))
+            issuer_profile = issuer_doc.get("profile") or {}
+            recipient_profile = recipient_doc.get("profile") or {}
+
+            if not (issuer_seed and recipient_seed and recipient_addr):
+                raise RuntimeError(
+                    "Both wallets must be provisioned to mint a memory"
+                )
+
+            uri_payload = _memory_uri_payload(
+                message=memory_message,
+                amount=amount,
+                issuer_username=issuer_profile.get("username") or "",
+                recipient_username=recipient_profile.get("username") or "",
+                timestamp=now,
+            )
+            mint_result = mint_memory_nft(
+                issuer_seed=issuer_seed,
+                recipient_seed=recipient_seed,
+                recipient_address=recipient_addr,
+                uri_payload=uri_payload,
+                taxon=0,
+            )
+
+            memory_doc = {
+                "_id": ObjectId(),
+                "issuer_id": me,
+                "recipient_id": other_id,
+                "ledger_id": lid,
+                "ledger_entry_id": entry_doc["_id"],
+                "amount": amount,
+                "message": memory_message,
+                "issuer_full_name": issuer_profile.get("full_name"),
+                "issuer_username": issuer_profile.get("username"),
+                "issuer_address": issuer_addr,
+                "recipient_full_name": recipient_profile.get("full_name"),
+                "recipient_username": recipient_profile.get("username"),
+                "recipient_address": recipient_addr,
+                "nft_id": mint_result.get("nft_id"),
+                "mint_hash": mint_result.get("mint_hash"),
+                "offer_id": mint_result.get("offer_id"),
+                "offer_hash": mint_result.get("offer_hash"),
+                "accept_hash": mint_result.get("accept_hash"),
+                "uri_hex": mint_result.get("uri_hex"),
+                "uri_payload": uri_payload,
+                "created_at": now,
+            }
+            memories.insert_one(memory_doc)
+            memory_payload = _serialize_memory(memory_doc, me)
+        except Exception as exc:
+            memory_error = str(exc)
+
+    # Refresh balance caches so the tx-history shows the new XRPL state
+    # immediately (mint + offer + accept all burn a few drops on each side).
+    if mint_memory:
+        _refresh_user_xrpl_cache(me)
+        _refresh_user_xrpl_cache(other_id)
+
+    response = {
+        "entry": _serialize_entry(entry_doc, sign, me),
+        "balance": new_balance,
+        "memory": memory_payload,
+    }
+    if memory_error:
+        response["memory_error"] = memory_error
+    return jsonify(response), 201
+
+
+@app.route("/memories", methods=["GET"])
+@require_auth
+def list_memories():
+    """Return every memory NFT the caller has ever issued or received,
+    newest first. Each item is fully self-describing — the client doesn't
+    need to round-trip ledger or user lookups to render it."""
+    me = g.user_id
+    cursor = memories.find(
+        {"$or": [{"issuer_id": me}, {"recipient_id": me}]}
+    ).sort("created_at", -1)
+    return jsonify([_serialize_memory(d, me) for d in cursor])
 
 
 RECEIPT_PROMPT = (
